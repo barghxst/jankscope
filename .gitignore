@@ -1,0 +1,4 @@
+/target
+/fixtures/*.json
+*.trace.json
+.chrome-profile/

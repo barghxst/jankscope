@@ -1,0 +1,32 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>bad page</title>
+<style>
+  .grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+  .grid.active .card:hover, .grid.active .card { background: tomato; }
+  .card { height: 30px; background: #ddd; }
+  #moving { position: absolute; top: 0; left: 0; width: 50px; height: 50px; background: blue; }
+</style></head>
+<body>
+<button id="btn">toggle</button>
+<div id="moving"></div>
+<div class="grid" id="grid"></div>
+<script>
+  const grid = document.getElementById('grid');
+  for (let i = 0; i < 400; i++) { const d = document.createElement('div'); d.className = 'card'; grid.appendChild(d); }
+
+  function badHandler() {            // toggling a class invalidates 400 .card elements
+    grid.classList.toggle('active');
+    const cards = grid.querySelectorAll('.card');
+    for (const c of cards) {          // layout thrashing: write then read
+      c.style.height = (30 + Math.random() * 5) + 'px';
+      void c.getBoundingClientRect().height;
+    }
+  }
+  function animateLeft() {            // animating `left` -> layout + paint each frame
+    let x = 0;
+    const tick = () => { x += 5; document.getElementById('moving').style.left = x + 'px'; if (x < 200) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+  document.getElementById('btn').addEventListener('click', () => { badHandler(); animateLeft(); });
+</script>
+</body></html>
