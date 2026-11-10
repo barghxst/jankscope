@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use thiserror::Error;
 
 #[derive(Debug, PartialEq, Deserialize)]
 #[serde(from = "String")]
@@ -22,6 +23,33 @@ pub enum Phase {
 pub enum EventId {
     Num(u64),
     Str(String),
+}
+
+#[derive(Debug, Error)]
+pub enum ParseError {
+    #[error("invalid trace JSON: {0}")]
+    Json(#[from] serde_json::Error),
+}
+
+#[derive(Debug)]
+pub struct Trace {
+    pub events: Vec<TraceEvent>,
+}
+
+#[derive(Deserialize)]
+struct Wrapped {
+    #[serde(rename = "traceEvents")]
+    trace_events: Vec<TraceEvent>,
+}
+
+pub fn parse(json: &str) -> Result<Trace, ParseError> {
+    let events: Vec<TraceEvent> = if json.trim_start().starts_with('[') {
+        serde_json::from_str(json)?
+    } else {
+        let wrapped: Wrapped = serde_json::from_str(json)?;
+        wrapped.trace_events
+    };
+    Ok(Trace { events })
 }
 
 impl From<String> for Phase {
@@ -103,5 +131,30 @@ mod tests {
         let json = r#"{"cat":"devtools.timeline","name":"Mark","ph":"Z","pid":46050,"tid":46067,"ts":1740485496}"#;
         let event: TraceEvent = serde_json::from_str(json).unwrap();
         assert_eq!(event.id, None);
+    }
+
+    #[test]
+    fn parse_wrapped() {
+        let json = r#"{"traceEvents":[{"cat":"devtools.timeline","name":"Mark","ph":"I","pid":46050,"tid":46067,"ts":1740485496}]}"#;
+        let trace = parse(json).unwrap();
+        assert_eq!(trace.events.len(), 1);
+    }
+
+    #[test]
+    fn parse_bare_array() {
+        let json = r#"[{"cat":"devtools.timeline","name":"Mark","ph":"I","pid":46050,"tid":46067,"ts":1740485496},{"cat":"devtools.timeline","name":"Mark","ph":"I","pid":46050,"tid":46067,"ts":1740485500}]"#;
+        let trace = parse(json).unwrap();
+        assert_eq!(trace.events.len(), 2);
+    }
+    #[test]
+    fn parse_with_metadata() {
+        let json = r#"{"traceEvents":[{"cat":"devtools.timeline","name":"Mark","ph":"I","pid":46050,"tid":46067,"ts":1740485496}],"metadata":{"source":"DevTools"}}"#;
+        let trace = parse(json).unwrap();
+        assert_eq!(trace.events.len(), 1);
+    }
+    #[test]
+    fn parse_broken() {
+        let json = r#"{"traceEvents":}"#;
+        assert!(parse(json).is_err());
     }
 }
