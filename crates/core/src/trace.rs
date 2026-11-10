@@ -17,6 +17,13 @@ pub enum Phase {
     Other(String),
 }
 
+#[derive(Debug, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum EventId {
+    Num(u64),
+    Str(String),
+}
+
 impl From<String> for Phase {
     fn from(value: String) -> Self {
         match value.as_str() {
@@ -38,6 +45,7 @@ impl From<String> for Phase {
 
 #[derive(Debug, Deserialize)]
 pub struct TraceEvent {
+    pub id: Option<EventId>,
     pub name: String,
     pub cat: String,
     pub ph: Phase,
@@ -74,5 +82,26 @@ mod tests {
         let json = r#"{"cat":"devtools.timeline","name":"Mark","ph":"Z","pid":46050,"tid":46067,"ts":1740485496}"#;
         let event: TraceEvent = serde_json::from_str(json).unwrap();
         assert_eq!(event.ph, Phase::Other("Z".to_string()));
+    }
+
+    #[test]
+    fn id_is_num() {
+        let json = r#"{"id":0,"cat":"devtools.timeline","name":"Mark","ph":"Z","pid":46050,"tid":46067,"ts":1740485496}"#;
+        let event: TraceEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(event.id, Some(EventId::Num(0)));
+    }
+
+    #[test]
+    fn id_is_string() {
+        let json = r#"{"id":"0x1","cat":"devtools.timeline","name":"Mark","ph":"Z","pid":46050,"tid":46067,"ts":1740485496}"#;
+        let event: TraceEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(event.id, Some(EventId::Str("0x1".to_string())));
+    }
+
+    #[test]
+    fn id_is_none() {
+        let json = r#"{"cat":"devtools.timeline","name":"Mark","ph":"Z","pid":46050,"tid":46067,"ts":1740485496}"#;
+        let event: TraceEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(event.id, None);
     }
 }
