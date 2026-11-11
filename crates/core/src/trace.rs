@@ -46,6 +46,17 @@ impl Trace {
         }
         counts
     }
+    pub fn top_names(&self, n: usize) -> Vec<(&str, usize)> {
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        for event in &self.events {
+            *counts.entry(event.name.as_str()).or_insert(0) += 1
+        }
+
+        let mut top: Vec<(&str, usize)> = counts.into_iter().collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        top.truncate(n);
+        top
+    }
 }
 
 #[derive(Deserialize)]
@@ -100,6 +111,11 @@ pub struct TraceEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    const SMALL: &str = r#"[
+        {"cat":"a","name":"RunTask","ph":"X","dur":5,"pid":1,"tid":1,"ts":100},
+        {"cat":"a","name":"RunTask","ph":"X","dur":5,"pid":1,"tid":1,"ts":200},
+        {"cat":"a","name":"Mark","ph":"I","pid":1,"tid":1,"ts":150}
+    ]"#;
 
     #[test]
     fn ph_is_x() {
@@ -171,15 +187,16 @@ mod tests {
     }
     #[test]
     fn counts_phases() {
-        let json = r#"[
-        {"cat":"a","name":"RunTask","ph":"X","dur":5,"pid":1,"tid":1,"ts":100},
-        {"cat":"a","name":"RunTask","ph":"X","dur":5,"pid":1,"tid":1,"ts":200},
-        {"cat":"a","name":"Mark","ph":"I","pid":1,"tid":1,"ts":150}
-    ]"#;
-        let trace = parse(json).unwrap();
+        let trace = parse(SMALL).unwrap();
         let counts = trace.count_by_phase();
         assert_eq!(counts[&Phase::Complete], 2);
         assert_eq!(counts[&Phase::Instant], 1);
         assert_eq!(counts.len(), 2);
+    }
+    #[test]
+    fn top_names_sorted() {
+        let trace = parse(SMALL).unwrap();
+        assert_eq!(trace.top_names(5), vec![("RunTask", 2), ("Mark", 1)]);
+        assert_eq!(trace.top_names(1), vec![("RunTask", 2)]);
     }
 }
