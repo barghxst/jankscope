@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use serde::Deserialize;
 use thiserror::Error;
 
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Deserialize)]
 #[serde(from = "String")]
 pub enum Phase {
     Complete,
@@ -34,6 +36,16 @@ pub enum ParseError {
 #[derive(Debug)]
 pub struct Trace {
     pub events: Vec<TraceEvent>,
+}
+
+impl Trace {
+    pub fn count_by_phase(&self) -> HashMap<Phase, usize> {
+        let mut counts = HashMap::new();
+        for event in &self.events {
+            *counts.entry(event.ph.clone()).or_insert(0) += 1;
+        }
+        counts
+    }
 }
 
 #[derive(Deserialize)]
@@ -156,5 +168,18 @@ mod tests {
     fn parse_broken() {
         let json = r#"{"traceEvents":}"#;
         assert!(parse(json).is_err());
+    }
+    #[test]
+    fn counts_phases() {
+        let json = r#"[
+        {"cat":"a","name":"RunTask","ph":"X","dur":5,"pid":1,"tid":1,"ts":100},
+        {"cat":"a","name":"RunTask","ph":"X","dur":5,"pid":1,"tid":1,"ts":200},
+        {"cat":"a","name":"Mark","ph":"I","pid":1,"tid":1,"ts":150}
+    ]"#;
+        let trace = parse(json).unwrap();
+        let counts = trace.count_by_phase();
+        assert_eq!(counts[&Phase::Complete], 2);
+        assert_eq!(counts[&Phase::Instant], 1);
+        assert_eq!(counts.len(), 2);
     }
 }
