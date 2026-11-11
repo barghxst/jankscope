@@ -70,6 +70,19 @@ impl Trace {
         }
         (end - start) / 1000.0
     }
+    pub fn thread_names(&self) -> Vec<(i64, i64, &str)> {
+        let mut names: Vec<(i64, i64, &str)> = self
+            .events
+            .iter()
+            .filter(|e| e.ph == Phase::Metadata && e.name == "thread_name")
+            .filter_map(|e| {
+                let name = e.args.get("name")?.as_str()?;
+                Some((e.pid, e.tid, name))
+            })
+            .collect();
+        names.sort();
+        names
+    }
 }
 
 #[derive(Deserialize)]
@@ -232,5 +245,19 @@ mod tests {
     fn duration_empty() {
         let trace = parse("[]").unwrap();
         assert_eq!(trace.duration_ms(), 0.0);
+    }
+    #[test]
+    fn thread_names_from_metadata() {
+        let json = r#"[
+            {"cat":"__metadata","name":"thread_name","ph":"M","pid":1,"tid":2,"ts":0,"args":{"name":"Compositor"}},
+            {"cat":"__metadata","name":"thread_name","ph":"M","pid":1,"tid":1,"ts":0,"args":{"name":"CrRendererMain"}},
+            {"cat":"__metadata","name":"process_name","ph":"M","pid":1,"tid":0,"ts":0,"args":{"name":"Renderer"}},
+            {"cat":"a","name":"RunTask","ph":"X","dur":5,"pid":1,"tid":1,"ts":100}
+        ]"#;
+        let trace = parse(json).unwrap();
+        assert_eq!(
+            trace.thread_names(),
+            vec![(1, 1, "CrRendererMain"), (1, 2, "Compositor")]
+        );
     }
 }
