@@ -57,6 +57,19 @@ impl Trace {
         top.truncate(n);
         top
     }
+    pub fn duration_ms(&self) -> f64 {
+        let mut start = f64::INFINITY;
+        let mut end = f64::NEG_INFINITY;
+
+        for e in self.events.iter().filter(|e| e.ph != Phase::Metadata) {
+            start = start.min(e.ts);
+            end = end.max(e.ts + e.dur.unwrap_or(0.0));
+        }
+        if start > end {
+            return 0.0;
+        }
+        (end - start) / 1000.0
+    }
 }
 
 #[derive(Deserialize)]
@@ -198,5 +211,26 @@ mod tests {
         let trace = parse(SMALL).unwrap();
         assert_eq!(trace.top_names(5), vec![("RunTask", 2), ("Mark", 1)]);
         assert_eq!(trace.top_names(1), vec![("RunTask", 2)]);
+    }
+    #[test]
+    fn duration_small() {
+        let trace = parse(SMALL).unwrap();
+        assert_eq!(trace.duration_ms(), 0.105);
+    }
+
+    #[test]
+    fn duration_ignores_metadata() {
+        let json = r#"[
+            {"cat":"__metadata","name":"thread_name","ph":"M","pid":1,"tid":1,"ts":0,"args":{"name":"CrRendererMain"}},
+            {"cat":"a","name":"RunTask","ph":"X","dur":500,"pid":1,"tid":1,"ts":1000}
+        ]"#;
+        let trace = parse(json).unwrap();
+        assert_eq!(trace.duration_ms(), 0.5);
+    }
+
+    #[test]
+    fn duration_empty() {
+        let trace = parse("[]").unwrap();
+        assert_eq!(trace.duration_ms(), 0.0);
     }
 }
