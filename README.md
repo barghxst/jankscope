@@ -26,7 +26,7 @@ Built for two readers:
 crates/core   Rust library: trace → frame model → findings
 crates/cli    `jankscope` binary
 tools/        temporary prototypes (Node trace recorder)
-fixtures/     test pages with known performance bugs
+fixtures/     test pages, committed test traces, local recordings
 docs/specs/   one spec per task, done in order
 DECISIONS.md  why things are the way they are
 ```
@@ -34,7 +34,7 @@ DECISIONS.md  why things are the way they are
 ## Recording a trace (prototype)
 
 ```bash
-node tools/record.mjs fixtures/layout-thrashing.html fixtures/layout-thrashing.trace.json
+node tools/record.mjs fixtures/pages/layout-thrashing.html fixtures/recorded/layout-thrashing.trace.json
 ```
 
 If Chrome fails to start from Node, start it yourself and pass `--attach`:
@@ -43,7 +43,11 @@ If Chrome fails to start from Node, start it yourself and pass `--attach`:
 google-chrome-stable --headless=new --remote-debugging-port=9333 --user-data-dir=.chrome-profile
 ```
 
-Traces are large and are not committed. Regenerate them from `fixtures/*.html`.
+Full recordings are large and are not committed: they live in `fixtures/recorded/`, which git ignores.
+Regenerate them from `fixtures/pages/*.html`.
+
+Tests use small traces cut from those recordings. They live in `fixtures/traces/` and are committed;
+see [`fixtures/traces/README.md`](fixtures/traces/README.md) for where each one comes from.
 
 ## Roadmap
 

@@ -15,7 +15,7 @@ Insights for agents, mostly page load), `react-render-profile-mcp` and React Sca
 
 ## 002. The data source is the Chrome trace with hidden categories (2026-11-10)
 
-**Context.** A prototype trace of `fixtures/layout-thrashing.html` (≈6.5 MB, ≈10k events) showed that
+**Context.** A prototype trace of `fixtures/pages/layout-thrashing.html` (≈6.5 MB, ≈10k events) showed that
 `disabled-by-default-devtools.timeline.invalidationTracking` and `disabled-by-default-blink.debug` give:
 per-node invalidation reasons with JS stacks, `Layout` events with a `stackTrace` (forced layout),
 `SelectorStats` per selector, `LayoutShift` with old and new rects.
@@ -40,3 +40,22 @@ One implementation means one place for bugs.
 Recording moves to Rust later.
 
 **Why.** Recording is not the interesting part yet; analysis is. Don't block on it.
+
+## 005. Trace model: `f64` time, untyped `args`, unknown phases kept (2026-11-12)
+
+**Decision.** `ts` and `dur` are `f64` microseconds. `args` stays a `serde_json::Value`. Unknown phases parse
+into `Phase::Other(String)` instead of failing. `id` is a number-or-string enum, kept as written.
+
+**Why.** The trace format allows fractional timestamps even though Chrome writes integers. Every event has its
+own `args` shape; we type only the ones an analysis needs, in later specs. A new phase from Chrome must not
+break parsing of the whole trace. `id` arrives both as `0` and as `"0x1"`; normalising it is left until we
+actually match events by id.
+
+## 006. Fixtures are split by folder, not by name pattern (2026-11-12)
+
+**Decision.** `fixtures/pages/` holds test pages, `fixtures/traces/` holds small committed test traces named
+by purpose (`parse-edge-cases`), `fixtures/recorded/` holds full recordings and is the only ignored folder.
+`fixtures/traces/README.md` records the source and the exact `jq` command for each trace.
+
+**Why.** Ignoring by pattern needed a `!` exception per committed trace, and a forgotten one silently leaves
+a fixture out of git, so tests pass only on the machine that made it. A folder rule needs no upkeep.
