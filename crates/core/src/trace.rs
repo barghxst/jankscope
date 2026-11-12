@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use thiserror::Error;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Deserialize)]
 #[serde(from = "String")]
 pub enum Phase {
     Complete,
