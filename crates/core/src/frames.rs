@@ -1,4 +1,6 @@
-use crate::trace::TraceEvent;
+use thiserror::Error;
+
+use crate::trace::{Trace, TraceEvent};
 
 impl TraceEvent {
     pub fn frame_seq_id(&self) -> Option<u64> {
@@ -6,9 +8,146 @@ impl TraceEvent {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Renderer {
+    pub pid: i64,
+    pub main_tid: i64,
+    pub compositor_tid: i64,
+}
+
+#[derive(Debug, Error, PartialEq)]
+pub enum RendererError {
+    #[error("no renderer main thread in trace")]
+    NotFound,
+    #[error("several renderers and no TracingStartedInBrowser: {0:?}")]
+    Ambiguous(Vec<i64>),
+    #[error("renderer {0} has no compositor thread")]
+    NoCompositor(i64),
+}
+
+impl Trace {
+    pub fn main_renderer(&self) -> Result<Renderer, RendererError> {
+        let pid = match self.main_frame_pid() {
+            Some(pid) => pid,
+            None => self.only_renderer_pid()?,
+        };
+        let threads = self.thread_names();
+        let main_tid =
+            find_thread(&threads, pid, "CrRendererMain").ok_or(RendererError::NotFound)?;
+        let compositor_tid =
+            find_thread(&threads, pid, "Compositor").ok_or(RendererError::NoCompositor(pid))?;
+        Ok(Renderer {
+            pid,
+            main_tid,
+            compositor_tid,
+        })
+    }
+
+    fn main_frame_pid(&self) -> Option<i64> {
+        let started = self
+            .events
+            .iter()
+            .find(|e| e.name == "TracingStartedInBrowser")?;
+        let frames = started.args.get("data")?.get("frames")?.as_array()?;
+        let main = frames
+            .iter()
+            .find(|f| f.get("isOutermostMainFrame").and_then(|v| v.as_bool()) == Some(true))?;
+        main.get("processId")?.as_i64()
+    }
+
+    fn only_renderer_pid(&self) -> Result<i64, RendererError> {
+        let mut pids: Vec<i64> = self
+            .thread_names()
+            .into_iter()
+            .filter(|(_, _, name)| *name == "CrRendererMain")
+            .map(|(pid, _, _)| pid)
+            .collect();
+        pids.dedup();
+        match pids.as_slice() {
+            [] => Err(RendererError::NotFound),
+            [pid] => Ok(*pid),
+            _ => Err(RendererError::Ambiguous(pids)),
+        }
+    }
+}
+
+fn find_thread(threads: &[(i64, i64, &str)], pid: i64, name: &str) -> Option<i64> {
+    threads
+        .iter()
+        .find(|(p, _, n)| *p == pid && *n == name)
+        .map(|(_, tid, _)| *tid)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::trace::parse;
+
+    const RENDERER_10: &str = r#"
+        {"name":"thread_name","ph":"M","pid":10,"tid":1,"ts":0,"cat":"__metadata","args":{"name":"CrRendererMain"}},
+        {"name":"thread_name","ph":"M","pid":10,"tid":9,"ts":0,"cat":"__metadata","args":{"name":"Compositor"}}"#;
+    const RENDERER_20: &str = r#"
+        {"name":"thread_name","ph":"M","pid":20,"tid":1,"ts":0,"cat":"__metadata","args":{"name":"CrRendererMain"}},
+        {"name":"thread_name","ph":"M","pid":20,"tid":7,"ts":0,"cat":"__metadata","args":{"name":"Compositor"}}"#;
+    const STARTED_20: &str = r#"
+        {"name":"TracingStartedInBrowser","ph":"I","pid":1,"tid":1,"ts":0,"cat":"devtools.timeline",
+         "args":{"data":{"frames":[
+            {"processId":10,"isOutermostMainFrame":false},
+            {"processId":20,"isOutermostMainFrame":true}]}}}"#;
+
+    fn trace_of(parts: &[&str]) -> Trace {
+        let json = format!("[{}]", parts.join(","));
+        parse(&json).unwrap()
+    }
+
+    #[test]
+    fn renderer_single() {
+        let trace = trace_of(&[RENDERER_10]);
+        assert_eq!(
+            trace.main_renderer(),
+            Ok(Renderer {
+                pid: 10,
+                main_tid: 1,
+                compositor_tid: 9
+            })
+        );
+    }
+
+    #[test]
+    fn renderer_from_tracing_started() {
+        let trace = trace_of(&[RENDERER_10, RENDERER_20, STARTED_20]);
+        assert_eq!(
+            trace.main_renderer(),
+            Ok(Renderer {
+                pid: 20,
+                main_tid: 1,
+                compositor_tid: 7
+            })
+        );
+    }
+
+    #[test]
+    fn renderer_ambiguous() {
+        let trace = trace_of(&[RENDERER_10, RENDERER_20]);
+        assert_eq!(
+            trace.main_renderer(),
+            Err(RendererError::Ambiguous(vec![10, 20]))
+        );
+    }
+
+    #[test]
+    fn renderer_not_found() {
+        let trace = trace_of(&[]);
+        assert_eq!(trace.main_renderer(), Err(RendererError::NotFound));
+    }
+
+    #[test]
+    fn renderer_no_compositor() {
+        let trace = trace_of(&[
+            r#"{"name":"thread_name","ph":"M","pid":10,"tid":1,"ts":0,"cat":"__metadata","args":{"name":"CrRendererMain"}}"#,
+        ]);
+        assert_eq!(trace.main_renderer(), Err(RendererError::NoCompositor(10)));
+    }
 
     #[test]
     fn seq_id_from_begin_frame() {
