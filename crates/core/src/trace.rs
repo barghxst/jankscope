@@ -83,6 +83,12 @@ impl Trace {
         names.sort();
         names
     }
+
+    pub fn events_on(&self, pid: i64, tid: i64) -> impl Iterator<Item = &TraceEvent> + '_ {
+        self.events
+            .iter()
+            .filter(move |event| event.pid == pid && event.tid == tid)
+    }
 }
 
 #[derive(Deserialize)]
@@ -259,5 +265,23 @@ mod tests {
             trace.thread_names(),
             vec![(1, 1, "CrRendererMain"), (1, 2, "Compositor")]
         );
+    }
+
+    #[test]
+    fn events_on_matches_process_and_thread() {
+        let json = r#"[
+        {"cat":"a","name":"BeginFrame","ph":"I","pid":10,"tid":9,"ts":100},
+        {"cat":"a","name":"OtherProcess","ph":"I","pid":20,"tid":9,"ts":110},
+        {"cat":"a","name":"OtherThread","ph":"I","pid":10,"tid":1,"ts":120},
+        {"cat":"a","name":"DrawFrame","ph":"I","pid":10,"tid":9,"ts":130}
+    ]"#;
+        let trace = parse(json).unwrap();
+
+        let names: Vec<&str> = trace
+            .events_on(10, 9)
+            .map(|event| event.name.as_str())
+            .collect();
+
+        assert_eq!(names, vec!["BeginFrame", "DrawFrame"]);
     }
 }
